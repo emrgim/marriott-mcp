@@ -24,6 +24,12 @@ _pw = None
 _ctx: BrowserContext | None = None
 
 
+from src.activity import (  # noqa: E402
+    flatten_activity_node,
+    normalize_types,
+    parse_account_activity,
+    summarize_entries,
+)
 from src.creds import load_creds  # noqa: E402
 
 
@@ -276,27 +282,6 @@ def customer_id() -> str:
     return json.loads(_GQL_SEED["post"])["variables"]["customerId"]
 
 
-def flatten_activity_node(node: dict) -> dict[str, Any]:
-    props = node.get("properties") or []
-    hotel = (props[0].get("basicInformation") or {}) if props else {}
-    typ = node.get("type") or {}
-    return {
-        "posted": node.get("postDate"),
-        "start": node.get("startDate"),
-        "end": node.get("endDate"),
-        "type": typ.get("code"),
-        "type_label": typ.get("description"),
-        "description": node.get("description"),
-        "property": hotel.get("name") or node.get("description"),
-        "property_id": props[0].get("id") if props else None,
-        "points": node.get("totalEarning"),
-        "base": node.get("baseEarning"),
-        "elite": node.get("eliteEarning"),
-        "extra": node.get("extraEarning"),
-        "qualifying": node.get("isQualifyingActivity"),
-    }
-
-
 def fetch_activity_page(
     *,
     months: int,
@@ -348,6 +333,9 @@ def fetch_stays(
     property_contains: str | None = None,
 ) -> dict[str, Any]:
     """Paginate GraphQL. months=240 ≈ 20 years; no UI 24-month cap."""
+    types = (types or "stay").strip().lower()
+    if types not in ("all", "stay", "bonus"):
+        types = "stay"
     goto_account(ACTIVITY, name="stays-session")
     cid = customer_id()
     stays: list[dict[str, Any]] = []
@@ -361,14 +349,9 @@ def fetch_stays(
         if not raw.get("ok"):
             return {"error": raw, "stays": stays, "count": len(stays)}
         js = raw.get("json") or {}
-        act = (
-            ((js.get("data") or {}).get("customer") or {})
-            .get("loyaltyInformation", {})
-            .get("accountActivity")
-            or {}
-        )
-        total = act.get("total")
-        edges = act.get("edges") or []
+        edges, total, errs = parse_account_activity(js)
+        if errs:
+            return {"error": {"graphql": errs}, "stays": stays, "count": len(stays)}
         if not edges:
             break
         for e in edges:
@@ -404,14 +387,18 @@ def fetch_activity(
     types: str = "all",
     page_size: int = 50,
     max_pages: int = 200,
+    property_contains: str | None = None,
 ) -> dict[str, Any]:
     """All activity types via GraphQL. months=240 ≈ 20 years; not the UI 3-month filter."""
     raw = fetch_stays(
         months=months,
-        types=types,
+        types=normalize_types(types),
         page_size=page_size,
         max_pages=max_pages,
+        property_contains=property_contains,
     )
     if "stays" in raw:
         raw["entries"] = raw.pop("stays")
+    entries = raw.get("entries") or []
+    raw.update(summarize_entries(entries))
     return raw

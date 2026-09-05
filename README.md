@@ -53,7 +53,7 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_open` / `marriott_login` — session
 - `marriott_me` — points, elite, nights
 - `marriott_trips` — upcoming reservations
-- `marriott_activity` — structured activity (GraphQL; `types=all|stay|bonus`, `months` default 240)
+- `marriott_activity` — GraphQL activity (`types=all|stay|bonus`; `entries` + `type_counts`)
 - `marriott_stays` — stay history (`months` default **240**)
 - `marriott_search` — hotels for destination + dates (`property_id`, official URL)
 - `marriott_availability` — rates + property URL for one hotel

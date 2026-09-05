@@ -15,9 +15,13 @@ Load this skill together with the Marriott MCP tools. Do not invent extra write 
 - `marriott_login` — only if signed_in is false; prefer server env credentials
 - `marriott_me` — account overview (points, elite, nights)
 - `marriott_trips` — upcoming reservations (does not cancel)
-- `marriott_activity` — GraphQL activity (`types=all|stay|bonus`, `months` default 240)
-- `marriott_stays` — GraphQL stay history (preferred)
+- `marriott_activity` — GraphQL activity (`types=all|stay|bonus`, `months` default 240). Returns `entries`, `type_counts`, `points_by_type`.
+- `marriott_stays` — GraphQL stay history (`types=stay` default)
 - `marriott_goto` — only for a specific marriott.com URL
+
+## marriott_activity
+
+Prefer this for mixed ledger (stays + card bonuses). `types=stay` if you only want hotel nights. Do not dump member numbers.
 
 ## marriott_stays
 

@@ -34,7 +34,7 @@ from src.creds import has_creds  # noqa: E402
 from src import bugs as marriott_bugs  # noqa: E402
 from src import update_check  # noqa: E402
 
-VERSION = "0.6.3"
+VERSION = "0.6.4"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
     "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
@@ -132,7 +132,7 @@ TOOLS = [
         "title": "Account activity",
         "description": (
             "Structured Bonvoy activity via GraphQL (not the 3-month HTML filter). "
-            "months default 240. types=all|stay|bonus. posted, type, description, property, points."
+            "months default 240. types=all|stay|bonus. Returns entries, type_counts, points_by_type."
         ),
         "inputSchema": {
             "type": "object",
@@ -140,6 +140,7 @@ TOOLS = [
                 "months": {"type": "integer", "description": "Lookback months, default 240"},
                 "types": {"type": "string", "description": "all | stay | bonus"},
                 "page_size": {"type": "integer"},
+                "property_contains": {"type": "string"},
             },
         },
         "annotations": RO,
@@ -563,7 +564,12 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         months = int(args.get("months") or 240)
         types = str(args.get("types") or "all")
         page_size = int(args.get("page_size") or 50)
-        return fetch_activity(months=months, types=types, page_size=page_size)
+        return fetch_activity(
+            months=months,
+            types=types,
+            page_size=page_size,
+            property_contains=args.get("property_contains"),
+        )
     if name == "marriott_stays":
         months = int(args.get("months") or 240)
         types = str(args.get("types") or "stay")
