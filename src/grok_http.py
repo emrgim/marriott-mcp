@@ -191,6 +191,24 @@ async def oauth_register(request: Request) -> Response:
     )
 
 
+def _incomplete_auth_page() -> str:
+    return """<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marriott MCP</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.card{background:#1c1c1c;padding:28px;border-radius:16px;max-width:440px;width:90%;line-height:1.45}
+code{color:#9cf}
+</style></head>
+<body><div class="card">
+<h1>Marriott MCP</h1>
+<p>Grok chiede accesso all'account Bonvoy.</p>
+<p style="color:#c00">Authorize URL incompleta: manca <code>redirect_uri</code> (bug della connect card, non allowlist).</p>
+<p>Grok Bot sta aprendo <code>/oauth/authorize</code> senza query OAuth 2.1 / PKCE. Non si può completare il consenso senza quei parametri.</p>
+<p>Per Grok Bot usa un connector con header <code>Authorization: Bearer</code> e il token del host (<code>GROK_MCP_TOKEN</code>). Credenziali Bonvoy restano sul server, non in chat.</p>
+</div></body></html>"""
+
+
 def _auth_page(error: str = "") -> str:
     err = f"<p style='color:#c00'>{error}</p>" if error else ""
     return f"""<!doctype html>
@@ -221,6 +239,19 @@ async def oauth_authorize(request: Request) -> Response:
     response_type = q.get("response_type", "code")
 
     if request.method == "GET":
+        log.info(
+            "OAuth authorize GET qs=%r client_id=%r redirect_uri=%r challenge=%s method=%s state=%r scope=%r",
+            str(request.url.query or ""),
+            client_id,
+            redirect_uri,
+            bool(challenge),
+            method,
+            state,
+            scope,
+        )
+        if not redirect_uri:
+            log.warning("OAuth authorize missing redirect_uri qs=%r", str(request.url.query or ""))
+            return HTMLResponse(_incomplete_auth_page(), 400)
         if response_type != "code":
             return HTMLResponse(_auth_page("response_type non supportato"), 400)
         if client_id not in (CLIENT_ID, "grok-marriott", "cursor", ""):
