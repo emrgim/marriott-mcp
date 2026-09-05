@@ -7,6 +7,7 @@ from typing import Any
 from src.browser import TRIPS, goto, goto_account, page, snapshot
 from src.search import search_url
 from src.interact import book as interact_book
+from src.book_flow import advance_checkout
 
 LOOKUP = "https://www.marriott.com/reservation/lookupReservation.mi"
 SEARCH = "https://www.marriott.com/search/findHotels.mi"
@@ -196,7 +197,7 @@ def create_reservation(
         }
     p.wait_for_timeout(3000)
     _click_first(p, [r"select", r"continue", r"book this", r"reserve"])
-    p.wait_for_timeout(3000)
+    p.wait_for_timeout(2000)
     if _has_payment_form(p):
         snap = snapshot(p, "write-create-payment")
         return {
@@ -206,27 +207,11 @@ def create_reservation(
             "error": "checkout requires a card; aborted (MCP never collects payment data)",
             "url": snap.get("url"),
         }
-    booked = _click_first(
-        p,
-        [r"complete reservation", r"confirm reservation", r"book now", r"complete booking"],
-    )
-    p.wait_for_timeout(5000)
-    snap = snapshot(p, "write-create-after")
-    body = (snap.get("body_excerpt") or "").lower()
-    changed = booked and any(
-        s in body for s in ("confirmation", "confirmed", "thank you for booking")
-    )
-    return {
-        "ok": bool(changed),
-        "changed": bool(changed),
-        "executed": True,
-        "destination": dest,
-        "checkin": checkin,
-        "checkout": checkout,
-        "url": snap.get("url"),
-        "title": snap.get("title"),
-        "note": None if changed else "flow ran but confirmation text not seen",
-    }
+    result = advance_checkout(p)
+    result.setdefault("destination", dest)
+    result.setdefault("checkin", checkin)
+    result.setdefault("checkout", checkout)
+    return result
 
 
 def execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -265,6 +250,10 @@ def execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 rooms=int(args.get("rooms") or 1),
                 room_pref=str(args.get("room_pref") or "single"),
                 pay_later=pay_later,
+                option_id=args.get("option_id"),
+                quote_id=args.get("quote_id"),
+                user_said=args.get("user_said"),
+                user_confirmed=args.get("user_confirmed"),
             )
         return {"ok": False, "changed": False, "error": f"unknown write tool {name}"}
     except Exception as exc:  # noqa: BLE001

@@ -59,13 +59,38 @@ def dismiss_overlays() -> dict[str, Any]:
     open_context()
     p = page()
     clicked = []
-    for name in ("Accept All", "Accept", "Agree", "Close", "No thanks", "Not now", "OK"):
-        loc = p.get_by_role("button", name=re.compile(rf"^{re.escape(name)}$", re.I))
-        if loc.count() and loc.first.is_visible():
+    for sel in (
+        "#onetrust-accept-btn-handler",
+        "#onetrust-reject-all-handler",
+        "button#onetrust-accept-btn-handler",
+    ):
+        loc = p.locator(sel)
+        if loc.count():
             try:
                 loc.first.click(timeout=2000)
-                clicked.append(name)
+                clicked.append(sel)
                 p.wait_for_timeout(400)
+            except Exception:
+                pass
+    for name in (
+        "Accept All",
+        "Accept Cookies",
+        "Accept",
+        "Agree",
+        "Confirm My Choices",
+        "Close",
+        "No thanks",
+        "Not now",
+        "OK",
+        "Got it",
+    ):
+        loc = p.get_by_role("button", name=re.compile(rf"{re.escape(name)}", re.I))
+        if loc.count():
+            try:
+                if loc.first.is_visible():
+                    loc.first.click(timeout=2000)
+                    clicked.append(name)
+                    p.wait_for_timeout(400)
             except Exception:
                 continue
     snap = snapshot(p, "mcp-dismiss")
@@ -181,160 +206,7 @@ def fill(field: str, value: str) -> dict[str, Any]:
     return {"ok": True, "filled": label, "url": p.url}
 
 
-def _pick_room(p, room_pref: str, pay_later: bool) -> bool:
-    pref = (room_pref or "").strip()
-    cards = p.locator("button, a").filter(has_text=re.compile(r"select|book|reserve", re.I))
-    n = min(cards.count(), 20)
-    for i in range(n):
-        el = cards.nth(i)
-        try:
-            blob = (el.inner_text() or "")[:400]
-        except Exception:
-            continue
-        if pref and pref.lower() not in blob.lower():
-            parent = el.locator("xpath=ancestor::*[self::article or self::li or self::section][1]")
-            try:
-                blob = (parent.inner_text() or blob)[:500]
-            except Exception:
-                pass
-            if pref.lower() not in blob.lower() and pref.lower() not in ("single", "1"):
-                continue
-        if pay_later and not re.search(r"pay later|flexible|no prepay|pay at hotel", blob, re.I):
-            # still allow if no prepaid language either
-            if re.search(r"prepay|non-refundable|pay now", blob, re.I):
-                continue
-        try:
-            el.click(timeout=5000)
-            p.wait_for_timeout(2500)
-            return True
-        except Exception:
-            continue
-    # last resort: first Select
-    btn = p.get_by_role("button", name=re.compile(r"select|book this|reserve", re.I))
-    if btn.count():
-        try:
-            btn.first.click(timeout=5000)
-            p.wait_for_timeout(2500)
-            return True
-        except Exception:
-            return False
-    return False
 
-
-def book(
-    *,
-    destination: str,
-    checkin: str,
-    checkout: str,
-    property: str | None = None,
-    property_id: str | None = None,
-    adults: int = 1,
-    rooms: int = 1,
-    room_pref: str = "single",
-    pay_later: bool = True,
-) -> dict[str, Any]:
-    dest = (destination or property or "").strip()
-    if not dest or not checkin or not checkout:
-        return _err("invalid", "destination, checkin, checkout required")
-    snap = ensure_session()
-    if not snap.get("signed_in"):
-        snap = do_login()
-    if not snap.get("signed_in"):
-        return _err("login_expired", "Bonvoy session not signed in")
-    dismiss_overlays()
-    found = search_properties(
-        destination=dest,
-        checkin=checkin,
-        checkout=checkout,
-        rooms=rooms,
-        adults=adults,
-        property_id=property_id or property,
-    )
-    if not found.get("ok"):
-        return {**found, "error": found.get("error") or "search_failed"}
-    p = page()
-    code = classify(p)
-    if code:
-        return _err(code, code, search=found)
-    needle = (property or dest).strip()
-    clicked_hotel = False
-    if needle:
-        loc = p.get_by_text(re.compile(re.escape(needle), re.I))
-        if loc.count():
-            try:
-                loc.first.click(timeout=6000)
-                p.wait_for_timeout(3000)
-                clicked_hotel = True
-            except Exception:
-                clicked_hotel = False
-    if not clicked_hotel:
-        rates = p.get_by_role("link", name=re.compile(r"view rates|select dates|book", re.I))
-        if rates.count():
-            try:
-                rates.first.click(timeout=6000)
-                p.wait_for_timeout(3000)
-            except Exception:
-                pass
-    dismiss_overlays()
-    code = classify(p)
-    if code in ("sold_out", "akamai_denied", "login_expired"):
-        return _err(code, code, url=p.url)
-    if not _pick_room(p, room_pref, pay_later):
-        ext = extract_page()
-        if ext.get("error") == "sold_out" or not ext.get("rooms"):
-            return _err("sold_out", "no selectable room", url=p.url, rooms=ext.get("rooms"))
-        return _err("not_found", "could not click a room", url=p.url, rooms=ext.get("rooms"))
-    p.wait_for_timeout(2000)
-    if p.locator('input[autocomplete="cc-number"]').count() or PAY.search(_body(p)[:2500]):
-        return _err(
-            "payment_required",
-            "checkout requires a card; MCP does not fill payment data",
-            url=p.url,
-        )
-    # guest fields if empty — first/last from account first name only
-    first = (snap.get("member_first_name") or "")[:40]
-    if first:
-        for lab in ("first name", "given name"):
-            box = p.get_by_label(re.compile(lab, re.I))
-            if box.count():
-                try:
-                    if not (box.first.input_value() or "").strip():
-                        box.first.fill(first)
-                except Exception:
-                    pass
-                break
-    for name in (
-        r"complete reservation",
-        r"confirm reservation",
-        r"book now",
-        r"complete booking",
-        r"reserve",
-    ):
-        btn = p.get_by_role("button", name=re.compile(name, re.I))
-        if btn.count() and btn.first.is_visible():
-            try:
-                btn.first.click(timeout=8000)
-                p.wait_for_timeout(5000)
-                break
-            except Exception:
-                continue
-    ext = extract_page()
-    conf = ext.get("confirmation_number")
-    if conf:
-        return {
-            "ok": True,
-            "changed": True,
-            "confirmation_number": conf,
-            "url": ext.get("url"),
-            "session": ext.get("session"),
-        }
-    code = ext.get("error") or "no_confirmation"
-    return {
-        "ok": False,
-        "changed": False,
-        "error": code if code != "no_confirmation" else "no_confirmation",
-        "message": "flow ran but no confirmation number on page",
-        "url": ext.get("url"),
-        "rooms": ext.get("rooms"),
-        "buttons": ext.get("buttons"),
-    }
+def book(**kwargs):
+    from src.book_flow import book as _book
+    return _book(**kwargs)

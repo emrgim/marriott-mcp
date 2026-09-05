@@ -66,7 +66,7 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_reservation_create`
 - `marriott_reservation_modify`
 - `marriott_reservation_cancel`
-- `marriott_book` — search → room → guest; Grok asks in chat, then second call with `user_said`
+- `marriott_book` — first lists rooms A/B/C in chat; books only after the human picks and says confermo
 
 **Skills fallback** (if the client has no `skills/list` yet)
 

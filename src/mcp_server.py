@@ -33,17 +33,16 @@ from src.creds import has_creds  # noqa: E402
 from src import bugs as marriott_bugs  # noqa: E402
 from src import update_check  # noqa: E402
 
-VERSION = "0.6.1"
+VERSION = "0.6.2"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
     "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
     "Session: marriott_status / marriott_login (env credentials). "
     "Find hotels: marriott_search then marriott_page (rooms/prices/confirmation). "
     "Interact: marriott_click, marriott_fill, marriott_dismiss. "
-    "Book: marriott_book. Grok has no Confirm button — first write call returns confirm_token. "
-    "Ask the human in the Grok chat using ask_the_user. Only if they reply sì/confermo/yes, "
-    "call the same tool again with confirm_token, user_confirmed=true, user_said=<their exact reply>. "
-    "Never invent user_said. "
+    "Book: marriott_book first lists rooms (A, B, C) and ask_the_user. Show that list in Grok chat. "
+    "After the human picks a letter, call again with quote_id, option_id or user_said. "
+    "If they have not said confermo, ask_the_user is the price question. Only then checkout. "
     "Structured errors: sold_out, payment_required, login_expired, akamai_denied. "
     "Never solve captchas. Never fill cards. "
     "Dates: YYYY-MM-DD or MM/DD/YYYY; the server converts to Marriott MM/DD/YYYY. "
@@ -57,7 +56,6 @@ WRITE_TOOLS = {
     "marriott_reservation_create",
     "marriott_reservation_modify",
     "marriott_reservation_cancel",
-    "marriott_book",
 }
 
 RO = {
@@ -349,9 +347,9 @@ TOOLS = [
         "name": "marriott_book",
         "title": "Book a stay",
         "description": (
-            "End-to-end book. First call returns ask_the_user + confirm_token (no hang). "
-            "Grok asks in chat; after sì/confermo, same tool with confirm_token, user_confirmed, user_said. "
-            "pay_later=true skips prepaid. Aborts on card form / sold_out / login_expired / akamai_denied."
+            "First call: search and return options A/B/C + ask_the_user. Show the list in Grok chat. "
+            "Do not book yet. After the human picks a letter, call again with quote_id and user_said. "
+            "If they did not say confermo, ask the price question. Checkout only after that."
         ),
         "inputSchema": {
             "type": "object",
@@ -365,13 +363,15 @@ TOOLS = [
                 "rooms": {"type": "integer"},
                 "room_pref": {"type": "string", "description": "single, king, twin"},
                 "pay_later": {"type": "boolean", "default": True},
+                "quote_id": {"type": "string"},
+                "option_id": {"type": "string", "description": "A, B, C from the quote list"},
                 "confirm_token": {"type": "string"},
                 "user_confirmed": {"type": "boolean"},
                 "user_said": {"type": "string"},
             },
             "required": ["destination", "checkin", "checkout"],
         },
-        "annotations": WRITE,
+        "annotations": SESSION,
     },
     {
         "name": "marriott_skills_list",
@@ -582,6 +582,26 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
             rooms=int(args.get("rooms") or 1),
             adults=int(args.get("adults") or 1),
             destination=args.get("destination"),
+        )
+    if name == "marriott_book":
+        pl = args.get("pay_later")
+        pay_later = True if pl is None else bool(pl)
+        if isinstance(pl, str):
+            pay_later = pl.strip().lower() not in ("false", "0", "no")
+        return marriott_interact.book(
+            destination=str(args.get("destination") or args.get("property") or ""),
+            checkin=str(args.get("checkin") or ""),
+            checkout=str(args.get("checkout") or ""),
+            property=args.get("property"),
+            property_id=args.get("property_id"),
+            adults=int(args.get("adults") or 1),
+            rooms=int(args.get("rooms") or 1),
+            room_pref=str(args.get("room_pref") or "single"),
+            pay_later=pay_later,
+            option_id=args.get("option_id"),
+            quote_id=args.get("quote_id"),
+            user_said=args.get("user_said"),
+            user_confirmed=args.get("user_confirmed"),
         )
     if name == "marriott_page":
         return marriott_interact.extract_page()
