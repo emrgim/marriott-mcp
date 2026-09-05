@@ -57,6 +57,8 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_stays` — stay history (`months` default **240**)
 - `marriott_search` — hotels for destination + dates (`property_id`, official URL)
 - `marriott_availability` — rates + property URL for one hotel
+- `marriott_page` — rooms, prices, confirmation number, structured errors
+- `marriott_click` / `marriott_fill` / `marriott_dismiss` — interact (no cards/captcha)
 - `marriott_goto` — marriott.com URLs only
 
 **Write** (elicitation required)
@@ -64,6 +66,7 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_reservation_create`
 - `marriott_reservation_modify`
 - `marriott_reservation_cancel`
+- `marriott_book` — search → room → guest → confirm (elicitation)
 
 **Skills fallback** (if the client has no `skills/list` yet)
 

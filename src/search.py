@@ -13,6 +13,22 @@ SEARCH = "https://www.marriott.com/search/findHotels.mi"
 AVAIL = "https://www.marriott.com/reservation/availabilitySearch.mi"
 
 
+_IT_MONTHS = {
+    "gennaio": 1,
+    "febbraio": 2,
+    "marzo": 3,
+    "aprile": 4,
+    "maggio": 5,
+    "giugno": 6,
+    "luglio": 7,
+    "agosto": 8,
+    "settembre": 9,
+    "ottobre": 10,
+    "novembre": 11,
+    "dicembre": 12,
+}
+
+
 def parse_date(value: str) -> datetime:
     raw = (value or "").strip()
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d-%m-%Y"):
@@ -20,6 +36,11 @@ def parse_date(value: str) -> datetime:
             return datetime.strptime(raw, fmt)
         except ValueError:
             continue
+    m = re.match(r"^(\d{1,2})\s+([A-Za-zàèéìòù]+)\s+(\d{4})$", raw, re.I)
+    if m:
+        month = _IT_MONTHS.get(m.group(2).lower())
+        if month:
+            return datetime(int(m.group(3)), month, int(m.group(1)))
     raise ValueError(f"unrecognized date {value!r}; use YYYY-MM-DD or MM/DD/YYYY")
 
 

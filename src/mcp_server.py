@@ -27,17 +27,22 @@ from src.browser import (  # noqa: E402
 from src import elicitation  # noqa: E402
 from src import reservations  # noqa: E402
 from src import search as marriott_search  # noqa: E402
+from src import interact as marriott_interact  # noqa: E402
 from src import skills_ext  # noqa: E402
 from src.creds import has_creds  # noqa: E402
 from src import bugs as marriott_bugs  # noqa: E402
+from src import update_check  # noqa: E402
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
     "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
     "Session: marriott_status / marriott_login (env credentials). "
-    "Find hotels: marriott_search(destination, checkin, checkout) returns property_id, url, dates. "
-    "Rates for one hotel: marriott_availability(property_id, checkin, checkout). "
+    "Find hotels: marriott_search then marriott_page (rooms/prices/confirmation). "
+    "Interact: marriott_click, marriott_fill, marriott_dismiss. "
+    "Book end-to-end: marriott_book (elicitation required) with destination, checkin, checkout, room_pref, pay_later. "
+    "Structured errors: sold_out, payment_required, login_expired, akamai_denied. "
+    "Never solve captchas. Never fill cards. "
     "Dates: YYYY-MM-DD or MM/DD/YYYY; the server converts to Marriott MM/DD/YYYY. "
     "Book only via marriott_reservation_create after search; elicitation/create must confirm. "
     "If Bonvoy is not signed in, the server sends a login URL (elicitation mode=url); "
@@ -49,6 +54,7 @@ WRITE_TOOLS = {
     "marriott_reservation_create",
     "marriott_reservation_modify",
     "marriott_reservation_cancel",
+    "marriott_book",
 }
 
 RO = {
@@ -221,6 +227,51 @@ TOOLS = [
         "annotations": RO,
     },
     {
+        "name": "marriott_page",
+        "title": "Read page structured",
+        "description": (
+            "Extract the current marriott.com page: rooms, rates, buttons, "
+            "confirmation_number, overlays. Structured errors: sold_out, "
+            "payment_required, login_expired, akamai_denied. Does not click."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": RO,
+    },
+    {
+        "name": "marriott_dismiss",
+        "title": "Dismiss overlays",
+        "description": "Click cookie/consent buttons (Accept All). Does not solve captchas.",
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": SESSION,
+    },
+    {
+        "name": "marriott_click",
+        "title": "Click control",
+        "description": "Click a button or link by visible name (Select, View rates, Continue). Not captcha.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"target": {"type": "string"}},
+            "required": ["target"],
+        },
+        "annotations": SESSION,
+    },
+    {
+        "name": "marriott_fill",
+        "title": "Fill a field",
+        "description": (
+            "Fill a guest form field by label/placeholder. Refuses password and card fields."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "field": {"type": "string"},
+                "value": {"type": "string"},
+            },
+            "required": ["field", "value"],
+        },
+        "annotations": SESSION,
+    },
+    {
         "name": "marriott_reservation_create",
         "title": "Create reservation",
         "description": (
@@ -275,6 +326,33 @@ TOOLS = [
                 "confirmation_number": {"type": "string"},
             },
             "required": ["confirmation_number"],
+        },
+        "annotations": WRITE,
+    },
+    {
+        "name": "marriott_book",
+        "title": "Book a stay",
+        "description": (
+            "End-to-end book: search, select room, guest, confirm. "
+            "ALWAYS pauses on elicitation/create. pay_later=true skips prepaid rates. "
+            "Aborts on payment form, sold_out, login_expired, akamai_denied. "
+            "Returns confirmation_number when Marriott shows it. "
+            "Example: destination='Aloft Dubai Airport', checkin='2027-04-20', checkout='2027-04-27', room_pref='single', pay_later=true."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "destination": {"type": "string"},
+                "checkin": {"type": "string"},
+                "checkout": {"type": "string"},
+                "property": {"type": "string"},
+                "property_id": {"type": "string"},
+                "adults": {"type": "integer"},
+                "rooms": {"type": "integer"},
+                "room_pref": {"type": "string", "description": "single, king, twin"},
+                "pay_later": {"type": "boolean", "default": True},
+            },
+            "required": ["destination", "checkin", "checkout"],
         },
         "annotations": WRITE,
     },
@@ -440,8 +518,13 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         open_context()
         p = page()
         if "marriott.com" not in (p.url or ""):
-            return slim(goto(HOME, name="mcp-status"))
-        return slim(snapshot(p, "mcp-status"))
+            out = slim(goto(HOME, name="mcp-status"))
+        else:
+            out = slim(snapshot(p, "mcp-status"))
+        info = update_check.peek()
+        if info:
+            out["update"] = info
+        return out
     if name == "marriott_login":
         return slim(do_login(args.get("email"), args.get("password")))
     if name == "marriott_me":
@@ -483,6 +566,14 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
             adults=int(args.get("adults") or 1),
             destination=args.get("destination"),
         )
+    if name == "marriott_page":
+        return marriott_interact.extract_page()
+    if name == "marriott_dismiss":
+        return marriott_interact.dismiss_overlays()
+    if name == "marriott_click":
+        return marriott_interact.click(str(args.get("target") or ""))
+    if name == "marriott_fill":
+        return marriott_interact.fill(str(args.get("field") or ""), str(args.get("value") or ""))
     if name == "marriott_skills_list":
         return {
             "resultType": "complete",

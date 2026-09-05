@@ -6,6 +6,7 @@ import re
 from typing import Any
 from src.browser import TRIPS, goto, goto_account, page, snapshot
 from src.search import search_url
+from src.interact import book as interact_book
 
 LOOKUP = "https://www.marriott.com/reservation/lookupReservation.mi"
 SEARCH = "https://www.marriott.com/search/findHotels.mi"
@@ -248,6 +249,22 @@ def execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 adults=int(args.get("adults") or 1),
                 rooms=int(args.get("rooms") or 1),
                 rate=args.get("rate"),
+            )
+        if name == "marriott_book":
+            pl = args.get("pay_later")
+            pay_later = True if pl is None else bool(pl)
+            if isinstance(pl, str):
+                pay_later = pl.strip().lower() not in ("false", "0", "no")
+            return interact_book(
+                destination=str(args.get("destination") or args.get("property") or ""),
+                checkin=str(args.get("checkin") or ""),
+                checkout=str(args.get("checkout") or ""),
+                property=args.get("property"),
+                property_id=args.get("property_id"),
+                adults=int(args.get("adults") or 1),
+                rooms=int(args.get("rooms") or 1),
+                room_pref=str(args.get("room_pref") or "single"),
+                pay_later=pay_later,
             )
         return {"ok": False, "changed": False, "error": f"unknown write tool {name}"}
     except Exception as exc:  # noqa: BLE001
