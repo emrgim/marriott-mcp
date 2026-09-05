@@ -70,6 +70,11 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_skills_list`
 - `marriott_skills_get`
 
+**Bugs** (saved on the MCP host, secrets stripped)
+
+- `marriott_report_bug` — title, what happened, tool, arguments, log
+- `marriott_bugs_list` / `marriott_bugs_get`
+
 Manuals ship next to the tools:
 
 - `skill://marriott-stays/SKILL.md`

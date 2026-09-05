@@ -29,6 +29,7 @@ from src import reservations  # noqa: E402
 from src import search as marriott_search  # noqa: E402
 from src import skills_ext  # noqa: E402
 from src.creds import has_creds  # noqa: E402
+from src import bugs as marriott_bugs  # noqa: E402
 
 VERSION = "0.5.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -41,6 +42,7 @@ INSTRUCTIONS = (
     "Book only via marriott_reservation_create after search; elicitation/create must confirm. "
     "If Bonvoy is not signed in, the server sends a login URL (elicitation mode=url); "
     "never put the password in chat. "
+    "If something fails, call marriott_report_bug with title, what_happened, the tool name, arguments, and the raw log. "
     "Skills: skill://marriott-stays/SKILL.md and skill://marriott-reservations/SKILL.md."
 )
 WRITE_TOOLS = {
@@ -306,6 +308,51 @@ TOOLS = [
         },
         "annotations": RO,
     },
+    {
+        "name": "marriott_report_bug",
+        "title": "Report a bug",
+        "description": (
+            "File a bug on the MCP host. Include title, what happened, expected, "
+            "tool name, arguments, and the raw log/traceback. Passwords and API keys "
+            "are stripped. Does not need Bonvoy login."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "what_happened": {"type": "string"},
+                "expected": {"type": "string"},
+                "tool": {"type": "string", "description": "MCP tool that failed"},
+                "arguments": {"type": "string", "description": "Tool arguments as JSON text"},
+                "log": {"type": "string", "description": "Traceback, tool result, or console log"},
+                "url": {"type": "string"},
+                "client": {"type": "string", "description": "e.g. grok, claude, cursor"},
+            },
+            "required": ["title", "what_happened"],
+        },
+        "annotations": RO,
+    },
+    {
+        "name": "marriott_bugs_list",
+        "title": "List filed bugs",
+        "description": "List bugs saved on this server. No Bonvoy login.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
+        },
+        "annotations": RO,
+    },
+    {
+        "name": "marriott_bugs_get",
+        "title": "Get a filed bug",
+        "description": "Read one bug by id (BUG-...). Includes log. No Bonvoy login.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "required": ["id"],
+        },
+        "annotations": RO,
+    },
 ]
 
 PROMPTS = [
@@ -447,6 +494,21 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         if entry is None:
             return {"error": f"unknown skill {uri}", "ok": False}
         return {"resultType": "complete", "skill": entry}
+    if name == "marriott_report_bug":
+        return marriott_bugs.save_bug(
+            title=str(args.get("title") or ""),
+            what_happened=str(args.get("what_happened") or ""),
+            expected=str(args.get("expected") or ""),
+            tool=str(args.get("tool") or ""),
+            arguments=args.get("arguments"),
+            log=str(args.get("log") or ""),
+            url=str(args.get("url") or ""),
+            client=str(args.get("client") or ""),
+        )
+    if name == "marriott_bugs_list":
+        return marriott_bugs.list_bugs(limit=int(args.get("limit") or 20))
+    if name == "marriott_bugs_get":
+        return marriott_bugs.get_bug(str(args.get("id") or ""))
     return {"error": f"unknown tool {name}"}
 
 
@@ -735,7 +797,14 @@ def handle(req: dict) -> None:
         args = params.get("arguments") or {}
         if (
             name.startswith("marriott_")
-            and name not in ("marriott_skills_list", "marriott_skills_get")
+            and name
+            not in (
+                "marriott_skills_list",
+                "marriott_skills_get",
+                "marriott_report_bug",
+                "marriott_bugs_list",
+                "marriott_bugs_get",
+            )
             and not has_creds()
         ):
             eid, elicit_rpc = elicitation.start_login(name, args)

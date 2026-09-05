@@ -502,7 +502,13 @@ async def login_page(request: Request) -> Response:
 def _needs_login_gate(name: str) -> bool:
     if not name.startswith("marriott_"):
         return False
-    if name in ("marriott_skills_list", "marriott_skills_get"):
+    if name in (
+        "marriott_skills_list",
+        "marriott_skills_get",
+        "marriott_report_bug",
+        "marriott_bugs_list",
+        "marriott_bugs_get",
+    ):
         return False
     return not has_creds()
 
