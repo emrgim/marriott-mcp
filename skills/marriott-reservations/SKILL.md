@@ -1,6 +1,6 @@
 ---
 name: marriott-reservations
-description: Use when creating, modifying, or cancelling a Marriott reservation via Marriott Dash MCP. Writes always pause on elicitation/create.
+description: Use when creating, modifying, or cancelling a Marriott reservation via Marriott MCP. Writes always pause on elicitation/create.
 version: 1.0.0
 ---
 

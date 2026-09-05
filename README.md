@@ -1,8 +1,8 @@
-# Marriott Dash MCP
+# Marriott MCP
 
 **Your Marriott Bonvoy account, as tools an AI agent can actually use.**
 
-Marriott Dash is a [Model Context Protocol](https://modelcontextprotocol.io/) server that signs into *your* marriott.com session and exposes it to clients such as Claude, ChatGPT, Cursor, or Grok.
+Marriott MCP is a [Model Context Protocol](https://modelcontextprotocol.io/) server that signs into *your* marriott.com session and exposes it to clients such as Claude, ChatGPT, Cursor, or Grok.
 
 It is **not** Marriott’s partner/CRS API. There is no public consumer API for points, elite nights, or trips. This server drives a real Chrome profile the same way you would, then wraps that session as MCP tools, resources, and skills.
 
@@ -29,7 +29,7 @@ Write tools never collect card numbers, CVV, or passwords through elicitation. I
 ## How it works
 
 ```
-AI client  ── MCP (stdio or HTTPS) ──►  Marriott Dash
+AI client  ── MCP (stdio or HTTPS) ──►  Marriott MCP
                                             │
                                             ▼
                                    persistent Chrome

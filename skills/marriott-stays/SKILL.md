@@ -1,12 +1,12 @@
 ---
 name: marriott-stays
-description: Use when listing Bonvoy stays, elite status, points, or upcoming trips on Marriott Dash MCP. Read-only tools only.
+description: Use when listing Bonvoy stays, elite status, points, or upcoming trips on Marriott MCP. Read-only tools only.
 version: 1.0.0
 ---
 
 # Marriott stays (read-only)
 
-Load this skill together with the Marriott Dash tools. Do not invent extra write tools from this skill.
+Load this skill together with the Marriott MCP tools. Do not invent extra write tools from this skill.
 
 ## Tools
 

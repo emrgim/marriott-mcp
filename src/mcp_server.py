@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stdio + RPC MCP: Marriott Dash. Reads plus elicited writes."""
+"""stdio + RPC MCP: Marriott MCP. Reads plus elicited writes."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from src import skills_ext  # noqa: E402
 VERSION = "0.4.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
-    "Marriott Dash MCP. Tools and skills ship together. "
+    "Marriott MCP. Tools and skills ship together. "
     "SEP-2640: skills/list then skills/get, files via resources/read under skill://. "
     "Skills: skill://marriott-stays/SKILL.md (reads), "
     "skill://marriott-reservations/SKILL.md (writes + elicitation). "
@@ -419,7 +419,7 @@ def handle_rpc(req: dict) -> dict | None:
                 },
                 "serverInfo": {
                     "name": "marriott-dash",
-                    "title": "Marriott Dash",
+                    "title": "Marriott MCP",
                     "version": VERSION,
                     "websiteUrl": "https://github.com/emrgim/marriott-mcp",
                 },
@@ -512,7 +512,7 @@ def handle_rpc(req: dict) -> dict | None:
         uri = (params or {}).get("uri") or ""
         if uri == "marriott://docs/safety":
             text = (
-                "Marriott Dash MCP writes require elicitation/create.\n"
+                "Marriott MCP writes require elicitation/create.\n"
                 "- Create/modify/cancel pause until Accept or Cancel.\n"
                 "- Decline, cancel, or timeout → changed=false, nothing executed.\n"
                 "- Payment cards are never collected via elicitation.\n"

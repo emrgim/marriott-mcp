@@ -183,7 +183,7 @@ body{{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;m
 button{{background:#fff;color:#111;border:0;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;width:100%}}
 </style></head>
 <body><div class="card">
-<h1>Marriott Dash MCP</h1>
+<h1>Marriott MCP</h1>
 <p>Grok chiede accesso all'account Bonvoy.</p>
 {err}
 </div></body></html>"""
@@ -230,7 +230,7 @@ body{{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;m
 button{{background:#fff;color:#111;border:0;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;width:100%}}
 </style></head>
 <body><div class="card">
-<h1>Marriott Dash MCP</h1>
+<h1>Marriott MCP</h1>
 <p>An MCP client is requesting access to this Bonvoy session on <b>{urlparse(PUBLIC_BASE).hostname or PUBLIC_BASE}</b>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrf" value="{csrf}">
@@ -385,12 +385,12 @@ def _confirm_html(eid: str, pending: elicitation.PendingElicit, done: str = "") 
     if done:
         return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Marriott Dash</title>
+<title>Marriott MCP</title>
 <style>
 body{{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center}}
 .card{{background:#1c1c1c;padding:28px;border-radius:16px;max-width:480px;width:90%}}
 </style></head>
-<body><div class="card"><h1>Marriott Dash</h1><p>{done}</p></div></body></html>"""
+<body><div class="card"><h1>Marriott MCP</h1><p>{done}</p></div></body></html>"""
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Conferma prenotazione</title>
@@ -469,7 +469,7 @@ async def handle_mcp(request: Request) -> Response:
         return _cors(
             JSONResponse(
                 {
-                    "name": "Marriott Dash (Grok MCP)",
+                    "name": "Marriott MCP (Grok MCP)",
                     "transport": "streamable-http",
                     "endpoint": "/",
                 }

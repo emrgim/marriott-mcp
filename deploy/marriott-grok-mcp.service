@@ -1,5 +1,5 @@
 [Unit]
-Description=Marriott Dash MCP (Streamable HTTP + OAuth)
+Description=Marriott MCP (Streamable HTTP + OAuth)
 After=network-online.target
 Wants=network-online.target
 

@@ -22,7 +22,7 @@ from src.browser import (
     snapshot,
 )
 
-app = FastAPI(title="Marriott Dash", version="0.1.0")
+app = FastAPI(title="Marriott MCP", version="0.1.0")
 
 
 class LoginBody(BaseModel):

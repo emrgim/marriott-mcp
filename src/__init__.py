@@ -1,1 +1,1 @@
-# Marriott Dash MCP
+# Marriott MCP
