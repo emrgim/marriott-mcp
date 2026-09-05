@@ -17,6 +17,7 @@ from src.browser import (  # noqa: E402
     TRIPS,
     close_context,
     do_login,
+    fetch_activity,
     fetch_stays,
     goto,
     goto_account,
@@ -33,7 +34,7 @@ from src.creds import has_creds  # noqa: E402
 from src import bugs as marriott_bugs  # noqa: E402
 from src import update_check  # noqa: E402
 
-VERSION = "0.6.2"
+VERSION = "0.6.3"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
     "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
@@ -128,9 +129,19 @@ TOOLS = [
     },
     {
         "name": "marriott_activity",
-        "title": "Activity page",
-        "description": "Read-only Activity HTML snapshot. Prefer marriott_stays for structured history.",
-        "inputSchema": {"type": "object", "properties": {}},
+        "title": "Account activity",
+        "description": (
+            "Structured Bonvoy activity via GraphQL (not the 3-month HTML filter). "
+            "months default 240. types=all|stay|bonus. posted, type, description, property, points."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "months": {"type": "integer", "description": "Lookback months, default 240"},
+                "types": {"type": "string", "description": "all | stay | bonus"},
+                "page_size": {"type": "integer"},
+            },
+        },
         "annotations": RO,
     },
     {
@@ -549,7 +560,10 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "marriott_trips":
         return slim(goto_account(TRIPS, name="mcp-trips"))
     if name == "marriott_activity":
-        return slim(goto_account(ACTIVITY, name="mcp-activity"))
+        months = int(args.get("months") or 240)
+        types = str(args.get("types") or "all")
+        page_size = int(args.get("page_size") or 50)
+        return fetch_activity(months=months, types=types, page_size=page_size)
     if name == "marriott_stays":
         months = int(args.get("months") or 240)
         types = str(args.get("types") or "stay")

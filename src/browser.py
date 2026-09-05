@@ -286,6 +286,7 @@ def flatten_activity_node(node: dict) -> dict[str, Any]:
         "end": node.get("endDate"),
         "type": typ.get("code"),
         "type_label": typ.get("description"),
+        "description": node.get("description"),
         "property": hotel.get("name") or node.get("description"),
         "property_id": props[0].get("id") if props else None,
         "points": node.get("totalEarning"),
@@ -395,3 +396,22 @@ def fetch_stays(
         "latest_end": max(ends) if ends else None,
         "stays": stays,
     }
+
+
+def fetch_activity(
+    *,
+    months: int = 240,
+    types: str = "all",
+    page_size: int = 50,
+    max_pages: int = 200,
+) -> dict[str, Any]:
+    """All activity types via GraphQL. months=240 ≈ 20 years; not the UI 3-month filter."""
+    raw = fetch_stays(
+        months=months,
+        types=types,
+        page_size=page_size,
+        max_pages=max_pages,
+    )
+    if "stays" in raw:
+        raw["entries"] = raw.pop("stays")
+    return raw
