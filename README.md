@@ -6,7 +6,7 @@ Marriott MCP is a [Model Context Protocol](https://modelcontextprotocol.io/) ser
 
 It is **not** Marriott’s partner/CRS API. There is no public consumer API for points, elite nights, or trips. This server drives a real Chrome profile the same way you would, then wraps that session as MCP tools, resources, and skills.
 
-Clone it, add your Bonvoy credentials locally, run it on your machine. Nothing in this repository is a hosted login for anyone else’s account.
+Clone it, add Bonvoy credentials (`.env` **or** the login page the MCP opens — never in Grok chat), run it on your machine.
 
 > Unofficial project. Not affiliated with, endorsed by, or maintained by Marriott International.
 
@@ -88,8 +88,12 @@ python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 playwright install chrome
-cp .env.example .env        # edit: MARRIOTT_EMAIL / MARRIOTT_PASSWORD
 ```
+
+Bonvoy sign-in (pick one):
+
+- `.env` with `MARRIOTT_EMAIL` / `MARRIOTT_PASSWORD`, or
+- skip `.env`: the first Marriott tool sends an **elicitation URL**. Open `/login/{token}`, enter Bonvoy there. Never type the password in Grok.
 
 ### Local stdio (Claude Desktop, Cursor, Hermes, …)
 

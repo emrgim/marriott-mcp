@@ -86,6 +86,45 @@ def message_for(tool: str, args: dict[str, Any], url: str = "") -> str:
     )
 
 
+def login_url(eid: str) -> str:
+    return f"{PUBLIC_BASE}/login/{eid}"
+
+
+def start_login(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    eid = _eid()
+    url = login_url(eid)
+    msg = (
+        "Sign in to Marriott Bonvoy on this page. Do not type the password in chat.\n"
+        f"{url}"
+    )
+    with _lock:
+        rec = PendingElicit(tool, args, msg)
+        rec.kind = "login"  # type: ignore[attr-defined]
+        _pending[eid] = rec
+    rpc = {
+        "jsonrpc": "2.0",
+        "id": eid,
+        "method": "elicitation/create",
+        "params": {
+            "mode": "url",
+            "message": msg,
+            "url": url,
+            "elicitationId": eid,
+            "requestedSchema": {
+                "type": "object",
+                "properties": {
+                    "done": {
+                        "type": "boolean",
+                        "description": "true after you submitted the login page",
+                    }
+                },
+                "required": ["done"],
+            },
+        },
+    }
+    return eid, rpc
+
+
 def start(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     eid = _eid()
     msg = message_for(tool, args, url=confirm_url(eid))
@@ -141,11 +180,12 @@ def accepted(result: dict[str, Any] | None) -> bool:
     content = result.get("content") or {}
     if not isinstance(content, dict):
         return False
-    val = content.get("confirm")
-    if val is True:
-        return True
-    if isinstance(val, str) and val.strip().lower() in ("true", "1", "yes", "si", "sì"):
-        return True
+    for key in ("confirm", "done"):
+        val = content.get(key)
+        if val is True:
+            return True
+        if isinstance(val, str) and val.strip().lower() in ("true", "1", "yes", "si", "sì"):
+            return True
     return False
 
 

@@ -30,8 +30,10 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from src.mcp_server import WRITE_TOOLS, finish_write, handle_rpc
+from src.mcp_server import WRITE_TOOLS, finish_write, handle_rpc, _tool_result
 from src import elicitation
+from src.browser import do_login
+from src.creds import has_creds, save_creds
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("marriott-grok-mcp")
@@ -439,6 +441,117 @@ async def confirm_page(request: Request) -> Response:
     return HTMLResponse(_confirm_html(eid, pending, done=done))
 
 
+def _login_html(error: str = "", done: str = "") -> str:
+    err = f"<p style='color:#c00'>{error}</p>" if error else ""
+    if done:
+        return f"""<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marriott MCP</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+.card{{background:#1c1c1c;padding:28px;border-radius:16px;max-width:420px;width:90%}}
+</style></head>
+<body><div class="card"><h1>Marriott MCP</h1><p>{done}</p></div></body></html>"""
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bonvoy sign-in</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+.card{{background:#1c1c1c;padding:28px;border-radius:16px;max-width:420px;width:90%}}
+label{{display:block;margin:12px 0 6px}}
+input{{width:100%;padding:10px;border-radius:8px;border:0}}
+button{{margin-top:18px;background:#fff;color:#111;border:0;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;width:100%}}
+</style></head>
+<body><div class="card">
+<h1>Marriott Bonvoy</h1>
+<p>Sign in here. Do not send the password to Grok.</p>
+{err}
+<form method="post">
+<label>Email or member number</label>
+<input type="text" name="email" autocomplete="username" required>
+<label>Password</label>
+<input type="password" name="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+</div></body></html>"""
+
+
+async def login_page(request: Request) -> Response:
+    eid = request.path_params.get("eid") or ""
+    pending = elicitation.get(eid)
+    if pending is None:
+        return HTMLResponse(_login_html(done="Link expired. Ask the agent to sign in again."), 404)
+    if request.method == "GET":
+        return HTMLResponse(_login_html())
+    form = await request.form()
+    email = str(form.get("email") or "").strip()
+    password = str(form.get("password") or "")
+    if not email or not password:
+        return HTMLResponse(_login_html(error="Email and password required."), 400)
+    save_creds(email, password)
+    log.info("Bonvoy login form submitted")
+    loop = asyncio.get_running_loop()
+    snap = await loop.run_in_executor(_PW_EXEC, do_login)
+    if not snap.get("signed_in"):
+        return HTMLResponse(_login_html(error="Sign-in failed. Check credentials and retry."), 401)
+    elicitation.resolve(eid, {"action": "accept", "content": {"done": True, "confirm": True}})
+    name = snap.get("member_first_name") or "Bonvoy"
+    return HTMLResponse(_login_html(done=f"Signed in as {name}. Return to the chat."))
+
+
+def _needs_login_gate(name: str) -> bool:
+    if not name.startswith("marriott_"):
+        return False
+    if name in ("marriott_skills_list", "marriott_skills_get"):
+        return False
+    return not has_creds()
+
+
+async def _elicit_login(name: str, args: dict, orig_id: Any, orig_msg: dict) -> Response:
+    eid, elicit_rpc = elicitation.start_login(name, args)
+    log.info("elicitation/create url-login id=%s tool=%s", eid, name)
+
+    async def gen():
+        yield _sse_line(elicit_rpc)
+        loop = asyncio.get_running_loop()
+        answered = await loop.run_in_executor(None, elicitation.wait, eid)
+        if not elicitation.accepted(answered):
+            result = _tool_result(
+                {
+                    "ok": False,
+                    "signed_in": False,
+                    "error": "Bonvoy login cancelled or timed out. Open the login URL from elicitation.",
+                },
+                is_error=True,
+            )
+            yield _sse_line({"jsonrpc": "2.0", "id": orig_id, "result": result})
+            return
+        if name in WRITE_TOOLS:
+            weid, wrpc = elicitation.start(name, args)
+            yield _sse_line(wrpc)
+            wans = await loop.run_in_executor(None, elicitation.wait, weid)
+            result = await loop.run_in_executor(_PW_EXEC, finish_write, name, args, wans)
+            yield _sse_line({"jsonrpc": "2.0", "id": orig_id, "result": result})
+            return
+        resp = await loop.run_in_executor(_PW_EXEC, handle_rpc, orig_msg)
+        if isinstance(resp, dict):
+            resp.pop("_marriott_elicit", None)
+            yield _sse_line(resp)
+        else:
+            yield _sse_line(
+                {
+                    "jsonrpc": "2.0",
+                    "id": orig_id,
+                    "result": _tool_result({"ok": True, "signed_in": True}),
+                }
+            )
+
+    resp = StreamingResponse(gen(), media_type="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache, no-transform"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return _cors(resp)
+
+
 async def _elicit_write(name: str, args: dict, orig_id: Any) -> Response:
     eid, elicit_rpc = elicitation.start(name, args)
     log.info("elicitation/create id=%s tool=%s", eid, name)
@@ -496,6 +609,8 @@ async def handle_mcp(request: Request) -> Response:
         params = msg.get("params") or {}
         name = params.get("name") or ""
         args = params.get("arguments") or {}
+        if _needs_login_gate(name):
+            return await _elicit_login(name, args, msg.get("id"), msg)
         if name in WRITE_TOOLS:
             return await _elicit_write(name, args, msg.get("id"))
     if isinstance(msg, list):
@@ -531,6 +646,7 @@ routes = [
     Route("/", handle_mcp, methods=["GET", "POST", "OPTIONS"]),
     Route("/mcp", handle_mcp, methods=["GET", "POST", "OPTIONS"]),
     Route("/confirm/{eid}", confirm_page, methods=["GET", "POST"]),
+    Route("/login/{eid}", login_page, methods=["GET", "POST"]),
     Route("/.well-known/oauth-authorization-server", well_known_as, methods=["GET", "OPTIONS"]),
     Route("/.well-known/openid-configuration", well_known_as, methods=["GET", "OPTIONS"]),
     Route("/.well-known/oauth-protected-resource", well_known_prm, methods=["GET", "OPTIONS"]),

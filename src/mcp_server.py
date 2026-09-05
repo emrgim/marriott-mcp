@@ -28,6 +28,7 @@ from src import elicitation  # noqa: E402
 from src import reservations  # noqa: E402
 from src import search as marriott_search  # noqa: E402
 from src import skills_ext  # noqa: E402
+from src.creds import has_creds  # noqa: E402
 
 VERSION = "0.5.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -38,6 +39,8 @@ INSTRUCTIONS = (
     "Rates for one hotel: marriott_availability(property_id, checkin, checkout). "
     "Dates: YYYY-MM-DD or MM/DD/YYYY; the server converts to Marriott MM/DD/YYYY. "
     "Book only via marriott_reservation_create after search; elicitation/create must confirm. "
+    "If Bonvoy is not signed in, the server sends a login URL (elicitation mode=url); "
+    "never put the password in chat. "
     "Skills: skill://marriott-stays/SKILL.md and skill://marriott-reservations/SKILL.md."
 )
 WRITE_TOOLS = {
@@ -682,6 +685,42 @@ def handle(req: dict) -> None:
         )
         if paused is None:
             return
+        if paused.get("kind") == "login":
+            if not elicitation.accepted(
+                req.get("result") if isinstance(req.get("result"), dict) else None
+            ):
+                send(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": paused["id"],
+                        "result": _tool_result(
+                            {"ok": False, "signed_in": False, "error": "Bonvoy login cancelled"},
+                            is_error=True,
+                        ),
+                    }
+                )
+                return
+            if paused["name"] in WRITE_TOOLS:
+                eid2, elicit_rpc = elicitation.start(paused["name"], paused["args"])
+                _paused[eid2] = {
+                    "id": paused["id"],
+                    "name": paused["name"],
+                    "args": paused["args"],
+                }
+                send(elicit_rpc)
+                return
+            inner = handle_rpc(
+                {
+                    "jsonrpc": "2.0",
+                    "id": paused["id"],
+                    "method": "tools/call",
+                    "params": {"name": paused["name"], "arguments": paused["args"]},
+                }
+            )
+            if inner is not None:
+                inner.pop("_marriott_elicit", None)
+                send(inner)
+            return
         send(
             {
                 "jsonrpc": "2.0",
@@ -694,6 +733,15 @@ def handle(req: dict) -> None:
         params = req.get("params") or {}
         name = params.get("name") or ""
         args = params.get("arguments") or {}
+        if (
+            name.startswith("marriott_")
+            and name not in ("marriott_skills_list", "marriott_skills_get")
+            and not has_creds()
+        ):
+            eid, elicit_rpc = elicitation.start_login(name, args)
+            _paused[eid] = {"id": req.get("id"), "name": name, "args": args, "kind": "login"}
+            send(elicit_rpc)
+            return
         if name in WRITE_TOOLS:
             eid, elicit_rpc = elicitation.start(name, args)
             _paused[eid] = {"id": req.get("id"), "name": name, "args": args}

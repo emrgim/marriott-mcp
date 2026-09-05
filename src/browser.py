@@ -24,14 +24,17 @@ _pw = None
 _ctx: BrowserContext | None = None
 
 
+from src.creds import load_creds  # noqa: E402
+
+
 def load_dotenv() -> None:
     env_path = ROOT / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+    load_creds()
 
 
 load_dotenv()
