@@ -45,6 +45,12 @@ SCOPE = "mcp:tools"
 HOST = os.environ.get("MARRIOTT_GROK_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("MARRIOTT_GROK_MCP_PORT", "8099"))
 GROK_TOKEN = os.environ.get("GROK_MCP_TOKEN", "").strip()
+OAUTH_DISCOVERY = os.environ.get("MARRIOTT_OAUTH_DISCOVERY", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
 
 
 def _load_store() -> dict:
@@ -160,10 +166,14 @@ async def handle_options(request: Request) -> Response:
 
 
 async def well_known_as(request: Request) -> Response:
+    if not OAUTH_DISCOVERY:
+        return _cors(JSONResponse({"error": "not_found"}, status_code=404))
     return _cors(JSONResponse(_as_metadata()))
 
 
 async def well_known_prm(request: Request) -> Response:
+    if not OAUTH_DISCOVERY:
+        return _cors(JSONResponse({"error": "not_found"}, status_code=404))
     return _cors(JSONResponse(_prm()))
 
 
@@ -412,9 +422,12 @@ async def oauth_token(request: Request) -> Response:
 
 def _unauth() -> Response:
     resp = JSONResponse({"error": "unauthorized"}, status_code=401)
-    resp.headers["WWW-Authenticate"] = (
-        f'Bearer realm="marriott", resource_metadata="{PUBLIC_BASE}/.well-known/oauth-protected-resource"'
-    )
+    if OAUTH_DISCOVERY:
+        resp.headers["WWW-Authenticate"] = (
+            f'Bearer realm="marriott", resource_metadata="{PUBLIC_BASE}/.well-known/oauth-protected-resource"'
+        )
+    else:
+        resp.headers["WWW-Authenticate"] = 'Bearer realm="marriott"'
     return _cors(resp)
 
 

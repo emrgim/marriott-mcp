@@ -141,7 +141,7 @@ Connector form (typical):
 - Token auth: none (PKCE)
 - Scope: `mcp:tools`
 
-**Grok Bot:** if the connect card opens `/oauth/authorize` with no query, that is a client bug (missing `redirect_uri`). Set `GROK_MCP_TOKEN` on the host and connect with `Authorization: Bearer <token>`. Bonvoy credentials stay in `.env` or `/login/{token}`, never in chat.
+**Grok Bot:** if the connect card opens `/oauth/authorize` with no query, that is a client bug (missing `redirect_uri`). Set `GROK_MCP_TOKEN` and `MARRIOTT_OAUTH_DISCOVERY=0` on the host, then connect with `Authorization: Bearer <token>` (no OAuth discovery). Bonvoy credentials stay in `.env` or `/login/{token}`, never in chat.
 
 A systemd user unit template lives in `deploy/marriott-grok-mcp.service` — copy it and adjust paths.
 
