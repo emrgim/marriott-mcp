@@ -618,7 +618,27 @@ async def handle_mcp(request: Request) -> Response:
         if _needs_login_gate(name):
             return await _elicit_login(name, args, msg.get("id"), msg)
         if name in WRITE_TOOLS:
-            return await _elicit_write(name, args, msg.get("id"))
+            kind, payload = elicitation.prepare_write(name, args)
+            if kind != "run":
+                return _rpc_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": msg.get("id"),
+                        "result": _tool_result(payload, is_error=False),
+                    },
+                    accept,
+                )
+            result = await loop.run_in_executor(
+                _PW_EXEC,
+                finish_write,
+                name,
+                payload,
+                {"action": "accept", "content": {"confirm": True}},
+            )
+            return _rpc_response(
+                {"jsonrpc": "2.0", "id": msg.get("id"), "result": result},
+                accept,
+            )
     if isinstance(msg, list):
 
         def _batch() -> list:

@@ -33,14 +33,17 @@ from src.creds import has_creds  # noqa: E402
 from src import bugs as marriott_bugs  # noqa: E402
 from src import update_check  # noqa: E402
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
     "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
     "Session: marriott_status / marriott_login (env credentials). "
     "Find hotels: marriott_search then marriott_page (rooms/prices/confirmation). "
     "Interact: marriott_click, marriott_fill, marriott_dismiss. "
-    "Book end-to-end: marriott_book (elicitation required) with destination, checkin, checkout, room_pref, pay_later. "
+    "Book: marriott_book. Grok has no Confirm button — first write call returns confirm_token. "
+    "Ask the human in the Grok chat using ask_the_user. Only if they reply sì/confermo/yes, "
+    "call the same tool again with confirm_token, user_confirmed=true, user_said=<their exact reply>. "
+    "Never invent user_said. "
     "Structured errors: sold_out, payment_required, login_expired, akamai_denied. "
     "Never solve captchas. Never fill cards. "
     "Dates: YYYY-MM-DD or MM/DD/YYYY; the server converts to Marriott MM/DD/YYYY. "
@@ -275,9 +278,10 @@ TOOLS = [
         "name": "marriott_reservation_create",
         "title": "Create reservation",
         "description": (
-            "Create a Marriott reservation. ALWAYS pauses on elicitation/create "
-            "(Confirm/Cancel). Executes only after accept+confirm=true. "
-            "Aborts if checkout asks for a card. destination, checkin, checkout required."
+            "Create a Marriott reservation. First call returns ask_the_user + confirm_token "
+            "(no hang). Grok must ask that phrase in chat. After the human replies sì/confermo, "
+            "call again with confirm_token, user_confirmed=true, user_said=<exact reply>. "
+            "Aborts if checkout asks for a card."
         ),
         "inputSchema": {
             "type": "object",
@@ -290,6 +294,12 @@ TOOLS = [
                 "adults": {"type": "integer"},
                 "rooms": {"type": "integer"},
                 "rate": {"type": "string"},
+                "confirm_token": {"type": "string"},
+                "user_confirmed": {"type": "boolean"},
+                "user_said": {
+                    "type": "string",
+                    "description": "Exact human reply in Grok chat",
+                },
             },
             "required": ["destination", "checkin", "checkout"],
         },
@@ -299,8 +309,8 @@ TOOLS = [
         "name": "marriott_reservation_modify",
         "title": "Modify reservation",
         "description": (
-            "Modify dates on an existing reservation. Pauses on elicitation/create. "
-            "Runs only after the confirm button."
+            "Modify dates. First call returns ask_the_user. After the human replies in Grok, "
+            "call again with confirm_token, user_confirmed=true, user_said."
         ),
         "inputSchema": {
             "type": "object",
@@ -308,6 +318,9 @@ TOOLS = [
                 "confirmation_number": {"type": "string"},
                 "checkin": {"type": "string"},
                 "checkout": {"type": "string"},
+                "confirm_token": {"type": "string"},
+                "user_confirmed": {"type": "boolean"},
+                "user_said": {"type": "string"},
             },
             "required": ["confirmation_number"],
         },
@@ -317,13 +330,16 @@ TOOLS = [
         "name": "marriott_reservation_cancel",
         "title": "Cancel reservation",
         "description": (
-            "Cancel a reservation. Sends elicitation/create and waits for the "
-            "Confirm or Cancel button. Nothing is cancelled on decline/timeout."
+            "Cancel a reservation. First call returns ask_the_user. After the human replies in Grok, "
+            "call again with confirm_token, user_confirmed=true, user_said. Nothing runs without that."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "confirmation_number": {"type": "string"},
+                "confirm_token": {"type": "string"},
+                "user_confirmed": {"type": "boolean"},
+                "user_said": {"type": "string"},
             },
             "required": ["confirmation_number"],
         },
@@ -333,11 +349,9 @@ TOOLS = [
         "name": "marriott_book",
         "title": "Book a stay",
         "description": (
-            "End-to-end book: search, select room, guest, confirm. "
-            "ALWAYS pauses on elicitation/create. pay_later=true skips prepaid rates. "
-            "Aborts on payment form, sold_out, login_expired, akamai_denied. "
-            "Returns confirmation_number when Marriott shows it. "
-            "Example: destination='Aloft Dubai Airport', checkin='2027-04-20', checkout='2027-04-27', room_pref='single', pay_later=true."
+            "End-to-end book. First call returns ask_the_user + confirm_token (no hang). "
+            "Grok asks in chat; after sì/confermo, same tool with confirm_token, user_confirmed, user_said. "
+            "pay_later=true skips prepaid. Aborts on card form / sold_out / login_expired / akamai_denied."
         ),
         "inputSchema": {
             "type": "object",
@@ -351,6 +365,9 @@ TOOLS = [
                 "rooms": {"type": "integer"},
                 "room_pref": {"type": "string", "description": "single, king, twin"},
                 "pay_later": {"type": "boolean", "default": True},
+                "confirm_token": {"type": "string"},
+                "user_confirmed": {"type": "boolean"},
+                "user_said": {"type": "string"},
             },
             "required": ["destination", "checkin", "checkout"],
         },
@@ -903,9 +920,27 @@ def handle(req: dict) -> None:
             send(elicit_rpc)
             return
         if name in WRITE_TOOLS:
-            eid, elicit_rpc = elicitation.start(name, args)
-            _paused[eid] = {"id": req.get("id"), "name": name, "args": args}
-            send(elicit_rpc)
+            kind, payload = elicitation.prepare_write(name, args)
+            if kind != "run":
+                send(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": req.get("id"),
+                        "result": _tool_result(payload, is_error=False),
+                    }
+                )
+                return
+            send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req.get("id"),
+                    "result": finish_write(
+                        name,
+                        payload,
+                        {"action": "accept", "content": {"confirm": True}},
+                    ),
+                }
+            )
             return
     resp = handle_rpc(req)
     if resp is not None:

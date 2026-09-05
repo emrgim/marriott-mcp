@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -39,6 +40,8 @@ class PendingElicit:
         self.event = threading.Event()
         self.result: dict[str, Any] | None = None
         self.created = time.time()
+        self.execution: dict[str, Any] | None = None
+        self.status = "pending"
 
 
 _lock = threading.Lock()
@@ -127,7 +130,8 @@ def start_login(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
 def start(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     eid = _eid()
-    msg = message_for(tool, args, url=confirm_url(eid))
+    url = confirm_url(eid)
+    msg = message_for(tool, args, url=url)
     with _lock:
         _pending[eid] = PendingElicit(tool, args, msg)
     rpc = {
@@ -135,12 +139,119 @@ def start(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         "id": eid,
         "method": "elicitation/create",
         "params": {
-            "mode": "form",
+            "mode": "url",
             "message": msg,
+            "url": url,
+            "elicitationId": eid,
             "requestedSchema": CONFIRM_SCHEMA,
         },
     }
     return eid, rpc
+
+
+_YES = re.compile(
+    r"(?i)\b(sì|si|yes|ok|okay|confermo|conferma|procedi|va bene|go ahead)\b",
+)
+_NO = re.compile(r"\b(no|annulla|cancel|non confermo|stop)\b", re.I)
+
+
+def human_confirmed(user_said: str, user_confirmed: Any) -> bool:
+    flag = user_confirmed is True or str(user_confirmed).strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "si",
+        "sì",
+    )
+    said = (user_said or "").strip()
+    if not flag or not said:
+        return False
+    if _NO.search(said) and not _YES.search(said):
+        return False
+    return bool(_YES.search(said))
+
+
+def chat_confirm_payload(eid: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    ask = message_for(tool, args)
+    return {
+        "ok": False,
+        "error": "needs_user_chat_confirm",
+        "executed": False,
+        "changed": False,
+        "confirm_token": eid,
+        "tool": tool,
+        "summary": summarize(tool, args),
+        "ask_the_user": ask,
+        "message": (
+            "Grok chat has no MCP Confirm button. Ask the human this question in the Grok UI. "
+            "If they reply sì/confermo/yes, call the SAME tool again with "
+            "confirm_token, user_confirmed=true, and user_said set to their exact reply. "
+            "Never set user_confirmed without that reply."
+        ),
+    }
+
+
+def prepare_write(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """'ask' + payload, or 'run' + original args."""
+    token = str(args.get("confirm_token") or args.get("confirm_id") or "").strip()
+    if token:
+        rec = get(token)
+        if rec is None or rec.tool != name:
+            eid, _ = start(name, args)
+            payload = chat_confirm_payload(eid, name, args)
+            payload["error"] = "invalid_or_expired_confirm_token"
+            return "ask", payload
+        if human_confirmed(str(args.get("user_said") or ""), args.get("user_confirmed")):
+            rec.status = "accepted"
+            rec.result = {
+                "action": "accept",
+                "content": {"confirm": True, "user_said": args.get("user_said")},
+            }
+            rec.event.set()
+            return "run", rec.args
+        return "ask", chat_confirm_payload(token, rec.tool, rec.args)
+    eid, _ = start(name, args)
+    return "ask", chat_confirm_payload(eid, name, args)
+
+
+def set_execution(eid: str, payload: dict[str, Any]) -> None:
+    with _lock:
+        p = _pending.get(str(eid))
+        if p is None:
+            return
+        p.execution = payload
+        p.status = "done" if payload.get("ok") else "error"
+        p.event.set()
+
+
+def status_of(eid: str) -> dict[str, Any]:
+    rec = get(eid)
+    if rec is None:
+        return {"ok": False, "error": "unknown or expired confirm_id"}
+    if rec.execution is not None:
+        return {
+            "ok": True,
+            "status": rec.status,
+            "confirm_id": eid,
+            "result": rec.execution,
+        }
+    if rec.event.is_set() and not accepted(rec.result):
+        return {
+            "ok": True,
+            "status": "declined",
+            "confirm_id": eid,
+            "executed": False,
+            "changed": False,
+        }
+    return {
+        "ok": True,
+        "status": rec.status,
+        "confirm_id": eid,
+        "confirm_url": confirm_url(eid),
+        "tool": rec.tool,
+        "summary": summarize(rec.tool, rec.args),
+        "message": "Waiting for Conferma on confirm_url.",
+    }
 
 
 def get(eid: str) -> PendingElicit | None:
