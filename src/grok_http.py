@@ -74,19 +74,36 @@ def _pkce_s256(verifier: str) -> str:
     return _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
 
 
+ALLOWED_REDIRECTS = {
+    "https://www.cursor.com/agents/mcp/oauth/callback",
+    "http://localhost:8787/callback",
+    "http://127.0.0.1:8787/callback",
+    "http://[::1]:8787/callback",
+    "cursor://anysphere.cursor-mcp/oauth/callback",
+}
+
+
 def _redirect_ok(uri: str) -> bool:
+    raw = (uri or "").strip()
+    if not raw:
+        return False
+    norm = raw.rstrip("/")
+    if norm.lower() in {u.lower() for u in ALLOWED_REDIRECTS}:
+        return True
+    if norm.lower().startswith("cursor://anysphere.cursor-mcp/oauth/callback"):
+        return True
     try:
-        p = urlparse(uri)
+        p = urlparse(raw)
     except Exception:
         return False
-    if p.scheme not in ("https", "http"):
-        return False
     host = (p.hostname or "").lower()
-    if not host:
-        return False
-    if p.scheme == "http" and host not in ("localhost", "127.0.0.1"):
-        return False
-    return True
+    if p.scheme == "cursor":
+        return "cursor-mcp" in (p.netloc or "").lower()
+    if p.scheme == "https" and host:
+        return True
+    if p.scheme == "http" and host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    return False
 
 
 def _as_metadata() -> dict:
@@ -206,10 +223,14 @@ async def oauth_authorize(request: Request) -> Response:
     if request.method == "GET":
         if response_type != "code":
             return HTMLResponse(_auth_page("response_type non supportato"), 400)
-        if client_id not in (CLIENT_ID, "grok-marriott"):
-            return HTMLResponse(_auth_page(f"client_id sconosciuto: {client_id}"), 400)
+        if client_id not in (CLIENT_ID, "grok-marriott", "cursor", ""):
+            log.warning("OAuth unknown client_id=%s", client_id)
         if not _redirect_ok(redirect_uri):
+            log.warning("OAuth rejected redirect_uri=%r", redirect_uri)
             return HTMLResponse(_auth_page("redirect_uri non consentito"), 400)
+        if client_id and client_id not in (CLIENT_ID, "grok-marriott", "cursor"):
+            # DCR / Cursor may send their own public client id; PKCE still required.
+            pass
         if not challenge or method.upper() != "S256":
             return HTMLResponse(_auth_page("Serve PKCE S256"), 400)
         csrf = secrets.token_urlsafe(24)
