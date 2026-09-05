@@ -16,7 +16,7 @@ Clone it, add your Bonvoy credentials locally, run it on your machine. Nothing i
 
 | Surface | What it does |
 | --- | --- |
-| **Read** | Account snapshot, upcoming trips, activity, full stay history (GraphQL, not capped at 24 months) |
+| **Read** | Account, trips, stay history, **property search + availability** (URLs and dates from MCP, not the web) |
 | **Write** | Create, modify, and cancel reservations |
 | **Human gate** | Every write sends `elicitation/create` and **waits**. Nothing is booked or cancelled until you press Confirm |
 | **Skills** | Agent Skills over MCP ([SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640)): `skills/list`, `skills/get`, files on `skill://` |
@@ -55,6 +55,8 @@ Akamai blocks bare HTTP from datacenter IPs. A headed Chrome profile with a norm
 - `marriott_trips` — upcoming reservations
 - `marriott_activity` — activity page
 - `marriott_stays` — stay history (`months` default **240**)
+- `marriott_search` — hotels for destination + dates (`property_id`, official URL)
+- `marriott_availability` — rates + property URL for one hotel
 - `marriott_goto` — marriott.com URLs only
 
 **Write** (elicitation required)

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import quote_plus
-
 from src.browser import TRIPS, goto, goto_account, page, snapshot
+from src.search import search_url
 
 LOOKUP = "https://www.marriott.com/reservation/lookupReservation.mi"
 SEARCH = "https://www.marriott.com/search/findHotels.mi"
@@ -166,14 +165,18 @@ def create_reservation(
             "changed": False,
             "error": "destination, checkin, checkout required",
         }
-    qs = (
-        f"destinationAddress.destination={quote_plus(dest)}"
-        f"&fromDate={quote_plus(checkin)}"
-        f"&toDate={quote_plus(checkout)}"
-        f"&guestCount={int(adults or 1)}"
-        f"&roomCount={int(rooms or 1)}"
-    )
-    goto(f"{SEARCH}?{qs}", name="write-create-search")
+    try:
+        url = search_url(
+            destination=dest,
+            checkin=checkin,
+            checkout=checkout,
+            rooms=rooms,
+            adults=adults,
+            property_id=property_id or property,
+        )
+    except ValueError as exc:
+        return {"ok": False, "changed": False, "error": str(exc)}
+    goto(url, name="write-create-search")
     p = page()
     needle = (property_id or property or "").strip()
     if needle:

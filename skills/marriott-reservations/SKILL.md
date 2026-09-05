@@ -1,35 +1,32 @@
 ---
 name: marriott-reservations
-description: Use when creating, modifying, or cancelling a Marriott reservation via Marriott MCP. Writes always pause on elicitation/create.
-version: 1.0.0
+description: Use when searching Marriott hotels, checking availability, or creating/modifying/cancelling a reservation. Never web-search hotel URLs. Writes always pause on elicitation/create.
+version: 1.1.0
 ---
 
-# Marriott reservations (writes)
+# Marriott reservations
 
-Companion skill for the write tools. Tools and this manual ship together.
+Do **not** use web search for property URLs, hotel details, or rates. Those come from MCP.
 
-## Tools
+## Order of tools
 
-- `marriott_reservation_create` — destination, checkin, checkout required
-- `marriott_reservation_modify` — confirmation_number required
-- `marriott_reservation_cancel` — confirmation_number required
+1. `marriott_status` — confirm `signed_in`. If false, `marriott_login` (server env).
+2. `marriott_search` — destination + checkin + checkout. Returns `properties[].property_id`, `url`, and `dates` actually applied on marriott.com (`MM/DD/YYYY`).
+3. `marriott_availability` — one `property_id` + same dates. Returns `property_url` and `rate_lines`.
+4. `marriott_reservation_create` — same destination/dates/`property_id`. Pauses on elicitation.
 
-## Hard rule (elicitation)
+Dates: `YYYY-MM-DD` or `MM/DD/YYYY`. The server always sends Marriott `fromDate`/`toDate` as `MM/DD/YYYY` with `searchType=InCity` and occupancy. Do not pass ISO dates straight into a Marriott URL yourself.
 
-Every write **must** go through MCP `elicitation/create`. The tool stays paused until the user hits **Conferma** or **Annulla**.
+## Write tools
 
-Execute Playwright **only** if the elicitation result is `action=accept` and `content.confirm=true`.
+- `marriott_reservation_create`
+- `marriott_reservation_modify`
+- `marriott_reservation_cancel`
 
-On decline, cancel, timeout, or `confirm=false`: `changed=false`, `executed=false`. Do not retry the write without a new elicitation.
-
-Never skip elicitation. Never pass `confirm=true` as a tool argument to bypass it — that is not how this server works.
+Every write **must** go through `elicitation/create`. Execute only if `action=accept` and `content.confirm=true`.
 
 See `references/elicitation.md`.
 
 ## Payment
 
-Do not collect cards, CVV, or passwords via elicitation (MCP spec). If checkout shows a card form, stop.
-
-## Read first
-
-Upcoming trips: `marriott_trips`. History: `skill://marriott-stays/SKILL.md`.
+No cards via elicitation. If checkout shows a card form, stop.

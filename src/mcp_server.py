@@ -26,18 +26,19 @@ from src.browser import (  # noqa: E402
 )
 from src import elicitation  # noqa: E402
 from src import reservations  # noqa: E402
+from src import search as marriott_search  # noqa: E402
 from src import skills_ext  # noqa: E402
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 INSTRUCTIONS = (
-    "Marriott MCP. Tools and skills ship together. "
-    "SEP-2640: skills/list then skills/get, files via resources/read under skill://. "
-    "Skills: skill://marriott-stays/SKILL.md (reads), "
-    "skill://marriott-reservations/SKILL.md (writes + elicitation). "
-    "If the client has no skills/list, call marriott_skills_list / marriott_skills_get. "
-    "Writes pause on elicitation/create until Confirm/Cancel. "
-    "Self-host with Streamable HTTP + OAuth PKCE."
+    "Marriott MCP. Never web-search Marriott hotels, URLs, or rates — use tools. "
+    "Session: marriott_status / marriott_login (env credentials). "
+    "Find hotels: marriott_search(destination, checkin, checkout) returns property_id, url, dates. "
+    "Rates for one hotel: marriott_availability(property_id, checkin, checkout). "
+    "Dates: YYYY-MM-DD or MM/DD/YYYY; the server converts to Marriott MM/DD/YYYY. "
+    "Book only via marriott_reservation_create after search; elicitation/create must confirm. "
+    "Skills: skill://marriott-stays/SKILL.md and skill://marriott-reservations/SKILL.md."
 )
 WRITE_TOOLS = {
     "marriott_reservation_create",
@@ -160,6 +161,57 @@ TOOLS = [
                 "url": {"type": "string", "description": "https://www.marriott.com/..."}
             },
             "required": ["url"],
+        },
+        "annotations": RO,
+    },
+    {
+        "name": "marriott_search",
+        "title": "Search hotels",
+        "description": (
+            "Search marriott.com for properties. REQUIRED: destination, checkin, checkout. "
+            "Returns session.signed_in, dates actually applied on the site (MM/DD/YYYY), "
+            "and properties[{name, property_id, url}]. Do NOT web-search hotels. "
+            "Uses the persistent Bonvoy Chrome session."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "destination": {"type": "string", "description": "City or hotel name"},
+                "checkin": {"type": "string", "description": "YYYY-MM-DD or MM/DD/YYYY"},
+                "checkout": {"type": "string"},
+                "adults": {"type": "integer", "default": 1},
+                "rooms": {"type": "integer", "default": 1},
+                "property_id": {
+                    "type": "string",
+                    "description": "Optional MARSHA code (5 letters) or hotel name",
+                },
+            },
+            "required": ["destination", "checkin", "checkout"],
+        },
+        "annotations": RO,
+    },
+    {
+        "name": "marriott_availability",
+        "title": "Property availability",
+        "description": (
+            "Rates and property URL for one hotel. REQUIRED: property_id, checkin, checkout. "
+            "Returns session, dates applied, property_url, rate_lines. "
+            "Do not invent Marriott URLs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "property_id": {
+                    "type": "string",
+                    "description": "MARSHA code from marriott_search (e.g. DXBWH)",
+                },
+                "checkin": {"type": "string"},
+                "checkout": {"type": "string"},
+                "adults": {"type": "integer"},
+                "rooms": {"type": "integer"},
+                "destination": {"type": "string"},
+            },
+            "required": ["property_id", "checkin", "checkout"],
         },
         "annotations": RO,
     },
@@ -363,6 +415,24 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         if "marriott.com" not in url:
             return {"error": "Solo URL marriott.com", "changed": False}
         return slim(goto(url, name="mcp-goto"))
+    if name == "marriott_search":
+        return marriott_search.search_properties(
+            destination=str(args.get("destination") or ""),
+            checkin=str(args.get("checkin") or ""),
+            checkout=str(args.get("checkout") or ""),
+            rooms=int(args.get("rooms") or 1),
+            adults=int(args.get("adults") or 1),
+            property_id=args.get("property_id"),
+        )
+    if name == "marriott_availability":
+        return marriott_search.property_availability(
+            property_id=str(args.get("property_id") or ""),
+            checkin=str(args.get("checkin") or ""),
+            checkout=str(args.get("checkout") or ""),
+            rooms=int(args.get("rooms") or 1),
+            adults=int(args.get("adults") or 1),
+            destination=args.get("destination"),
+        )
     if name == "marriott_skills_list":
         return {
             "resultType": "complete",
