@@ -1,0 +1,72 @@
+query phoenixAccountGetMyActivityTable($customerId: ID!, $numberOfMonths: Int, $limit: Int, $sort: String, $offset: Int, $types: String, $filter: AccountActivityFilterInput) {
+  customer(id: $customerId) {
+    loyaltyInformation {
+      accountActivity(
+        numberOfMonths: $numberOfMonths
+        limit: $limit
+        sort: $sort
+        offset: $offset
+        types: $types
+        filter: $filter
+      ) {
+        total
+        edges {
+          node {
+            postDate
+            ... on LoyaltyAccountActivity {
+              totalEarning
+              baseEarning
+              eliteEarning
+              extraEarning
+              isQualifyingActivity
+              actions {
+                actionDate
+                totalEarning
+                type { code description __typename }
+                __typename
+              }
+              currency { code __typename }
+              partner {
+                account
+                type { code description __typename }
+                __typename
+              }
+              __typename
+            }
+            type { code description __typename }
+            description
+            ... on LoyaltyAccountAwardActivity {
+              awardType { code __typename }
+              __typename
+            }
+            startDate
+            endDate
+            properties {
+              id
+              basicInformation {
+                name
+                nameInDefaultLanguage
+                brand { id __typename }
+                __typename
+              }
+              __typename
+            }
+            __typename
+          }
+          __typename
+        }
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
+          previousOffset
+          currentOffset
+          nextOffset
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}

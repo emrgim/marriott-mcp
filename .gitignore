@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.session/
+cookies/
+*.session
+.DS_Store
+node_modules/
+dist/
+.pytest_cache/
+.mypy_cache/
+.session/grok-oauth.json
